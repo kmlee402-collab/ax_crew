@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AX Crew 관리 플랫폼</title>
+    <!-- Local Libraries -->
+    <script src="lib/tailwind.min.js"></script>
+    <script src="lib/lucide.min.js"></script>
+    <script src="lib/pocketbase.umd.js"></script>
+    <link rel="stylesheet" href="css/style.css">
+
+    <!-- Quill Editor (v2.0 Local - Offline Ready) -->
+    <link href="lib/quill.snow.css" rel="stylesheet">
+    <script src="lib/quill.js"></script>
+    <style>
+        /* [Edge/Windows 전용] 커서 색상 강제 해제 및 고정 */
+        .ql-editor,
+        .ql-editor *,
+        #manual-editor,
+        #manual-editor * {
+            caret-color: #000000 !important;
+            forced-color-adjust: none !important;
+            /* 고대비 모드 간섭 차단 */
+            -webkit-forced-color-adjust: none !important;
+            transform: translateZ(0);
+            /* 렌더링 버그 방지 */
+        }
+
+        /* 에디터 배경색 원복 */
+        .ql-container.ql-snow {
+            background-color: #ffffff !important;
+            border: 1px solid #f1f5f9 !important;
+        }
+        /* Quill Font Size Labels in pt */
+        .ql-snow .ql-picker.ql-size .ql-picker-label::before,
+        .ql-snow .ql-picker.ql-size .ql-picker-item::before { content: attr(data-value) !important; }
+        .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="12pt"]::before,
+        .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="12pt"]::before { content: '12pt' !important; }
+        .ql-snow .ql-picker.ql-size .ql-picker-label:not([data-value])::before,
+        .ql-snow .ql-picker.ql-size .ql-picker-item:not([data-value])::before { content: '12pt' !important; }
+    </style>
+</head>
+
+<body class="bg-slate-50 text-slate-900 font-sans">
+
+    <div class="flex h-screen overflow-hidden">
+        <!-- Sidebar: Deep Navy & Professional -->
+        <aside class="w-64 sidebar-dark flex flex-col z-30 shadow-2xl">
+            <div class="p-8">
+                <h1 class="text-xl font-black tracking-tighter flex items-center gap-3 text-white">
+                    <div class="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
+                        <i data-lucide="zap" class="text-white w-5 h-5"></i>
+                    </div>
+                    <span>AX Crew</span>
+                </h1>
+            </div>
+
+            <nav class="flex-1 px-4 py-4 space-y-1 overflow-y-auto custom-scrollbar">
+                <!-- Auth Tabs (Only visible when logged out) -->
+                <div id="nav-auth" class="space-y-1">
+                    <button onclick="switchTab('login')" id="btn-login"
+                        class="tab-btn nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold hover:bg-white/5 transition-all group">
+                        <i data-lucide="log-in" class="w-5 h-5 opacity-50 group-hover:opacity-100"></i>
+                        로그인
+                    </button>
+                    <button onclick="switchTab('join')" id="btn-join"
+                        class="tab-btn nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold hover:bg-white/5 transition-all group">
+                        <i data-lucide="user-plus" class="w-5 h-5 opacity-50 group-hover:opacity-100"></i>
+                        회원가입
+                    </button>
+                </div>
+                <!-- Main Tabs (Only visible when logged in) -->
+                <div id="nav-main" class="hidden space-y-1">
+                    <!-- 과제 관리 Group (Collapsible) -->
+                    <div class="space-y-1">
+                        <button onclick="toggleSubmenu('submenu-tasks')" class="w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-black text-white/50 hover:bg-white/5 transition-all group">
+                            <div class="flex items-center gap-3">
+                                <i data-lucide="folder-kanban" class="w-5 h-5 opacity-50 group-hover:opacity-100"></i>
+                                과제 관리
+                            </div>
+                            <i data-lucide="chevron-down" id="arrow-tasks" class="w-4 h-4 transition-transform duration-300"></i>
+                        </button>
+                        
+                        <div id="submenu-tasks" class="hidden pl-4 space-y-1 overflow-hidden transition-all duration-300">
+                            <button onclick="switchTab('tasks-list')" id="btn-tasks-list" class="tab-btn nav-item w-full flex items-center gap-3 pl-10 pr-4 py-2.5 rounded-xl text-sm font-bold hover:bg-white/5 transition-all group relative">
+                                <span class="absolute left-4 w-1 h-1 rounded-full bg-white/20 group-hover:bg-indigo-400 transition-colors"></span>
+                                전체 과제 List
+                            </button>
+                            <button onclick="switchTab('tasks')" id="btn-tasks" class="tab-btn nav-item w-full flex items-center gap-3 pl-10 pr-4 py-2.5 rounded-xl text-sm font-bold hover:bg-white/5 transition-all group relative">
+                                <span class="absolute left-4 w-1 h-1 rounded-full bg-white/20 group-hover:bg-indigo-400 transition-colors"></span>
+                                프로젝트 보드
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="h-px bg-white/5 mx-4 my-2"></div>
+
+                    <!-- 지식창고 (Flat for now, or can be collapsible too) -->
+                    <button onclick="switchTab('manual')" id="btn-manual" class="tab-btn nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold hover:bg-white/5 transition-all group">
+                        <i data-lucide="book-open" class="w-5 h-5 opacity-50 group-hover:opacity-100"></i>
+                        매뉴얼
+                    </button>
+                    <button onclick="switchTab('timeline')" id="btn-timeline" class="tab-btn nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold hover:bg-white/5 transition-all group">
+                        <i data-lucide="message-circle" class="w-5 h-5 opacity-50 group-hover:opacity-100"></i>
+                        Q&A
+                    </button>
+                </div>
+            </nav>
+
+            <div class="p-6 border-t border-white/5">
+                <button id="logout-btn" onclick="handleLogout()"
+                    class="w-full flex items-center gap-3 px-4 py-2 text-xs font-bold text-white/40 hover:text-rose-400 transition-colors hidden">
+                    <i data-lucide="log-out" class="w-4 h-4"></i>
+                    로그아웃
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="flex-1 flex flex-col min-w-0 h-full relative bg-[#f8fafc]">
+            <!-- Header: Clean & White -->
+            <header class="h-16 flex items-center justify-between px-8 bg-white border-b border-slate-200 z-20">
+                <h2 id="tab-title" class="text-lg font-extrabold text-slate-800 tracking-tight">Workspace</h2>
+                <div class="flex items-center gap-6">
+                    <div class="text-right hidden sm:block">
+                        <p id="current-header-date"
+                            class="text-[10px] font-black text-slate-400 uppercase tracking-widest"></p>
+                    </div>
+                    <!-- User Profile Area -->
+                    <div id="header-user-info" onclick="switchTab('mypage')"
+                        class="flex items-center gap-3 cursor-pointer group hover:bg-slate-50 p-1.5 px-3 rounded-xl transition-all hidden border border-slate-100">
+                        <div class="text-right">
+                            <p id="header-user-name" class="text-sm font-black text-slate-900 leading-none"></p>
+                            <p id="header-user-dept" class="text-[10px] text-slate-500 mt-0.5 font-bold"></p>
+                        </div>
+                        <div id="header-user-avatar"
+                            class="w-9 h-9 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 overflow-hidden shadow-sm">
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Tab Content -->
+            <div id="tab-content" class="flex-1 overflow-y-auto custom-scrollbar transition-opacity duration-300">
+                <!-- Injected via JS -->
+            </div>
+        </main>
+    </div>
+
+    <!-- Common Modal -->
+    <div id="modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl transform scale-95 transition-transform duration-200"
+            id="modal-content">
+            <div class="text-center">
+                <div id="modal-icon-container"
+                    class="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i data-lucide="alert-circle" class="w-8 h-8"></i>
+                </div>
+                <h3 id="modal-title" class="text-xl font-bold text-slate-800 mb-2">알림</h3>
+                <p id="modal-message" class="text-slate-600 mb-6 text-sm leading-relaxed"></p>
+                <button onclick="closeModal()"
+                    class="w-full py-3 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-900 transition-colors">
+                    확인
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Image Viewer Modal -->
+    <div id="image-viewer-modal" class="fixed inset-0 z-[100] hidden flex items-center justify-center p-4 md:p-10">
+        <div class="absolute inset-0 bg-slate-900/90 backdrop-blur-sm" onclick="closeImageViewer()"></div>
+        <div class="relative max-w-full max-h-full flex items-center justify-center animate-zoom-in">
+            <button onclick="closeImageViewer()" class="absolute -top-12 right-0 md:-right-12 text-white/70 hover:text-white transition-colors p-2 group">
+                <i data-lucide="x" class="w-8 h-8 group-hover:rotate-90 transition-transform duration-300"></i>
+            </button>
+            <img id="viewer-img" src="" class="max-w-full max-h-[85vh] rounded-2xl shadow-2xl border border-white/10 object-contain">
+        </div>
+    </div>
+
+    <script src="js/tabs.js"></script>
+    <script src="js/qa.js"></script>
+    <script src="js/app.js?v=3.0"></script>
+    <script>
+        // Initialize icons
+        lucide.createIcons();
+    </script>
+    <!-- Project Workspace Modal (Full-screen Notion Style) -->
+    <div id="project-modal" class="fixed inset-0 z-[60] hidden flex animate-fade-in">
+        <!-- Sidebar: Project List -->
+        <aside class="w-[280px] bg-slate-50 border-r border-slate-200 flex flex-col">
+            <div class="p-6 flex items-center justify-between border-b border-slate-100 bg-white">
+                <button onclick="closeProjectModal()"
+                    class="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-400">
+                    <i data-lucide="chevron-left" class="w-5 h-5"></i>
+                </button>
+                <h4 class="font-bold text-slate-700 text-sm">과제 리스트</h4>
+                <button onclick="openProjectCreate()"
+                    class="p-2 hover:bg-slate-100 rounded-lg transition-colors text-indigo-600">
+                    <i data-lucide="plus" class="w-4 h-4"></i>
+                </button>
+            </div>
+            <div id="project-sidebar-list" class="flex-1 overflow-y-auto p-4 space-y-1 custom-scrollbar">
+                <!-- Project list items injected via JS -->
+            </div>
+            <div
+                class="p-4 border-t border-slate-100 text-[10px] text-slate-400 font-medium text-center uppercase tracking-widest">
+                AX Crew Project Board
+            </div>
+        </aside>
+
+        <!-- Main Content: Editor Area -->
+        <div class="flex-1 bg-white flex flex-col relative overflow-hidden">
+            <div id="project-modal-content" class="flex-1 overflow-y-auto custom-scrollbar">
+                <!-- Notion style content injected via JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Project Quick Create Modal (Initial Registration) -->
+    <div id="project-create-modal" class="fixed inset-0 z-[70] hidden flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onclick="closeProjectCreate()"></div>
+        <div class="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl relative overflow-hidden animate-scale-in">
+            <div class="p-8 border-b border-slate-50">
+                <h3 class="text-2xl font-bold text-slate-800">새 과제 등록</h3>
+                <p class="text-slate-400 text-sm mt-1">기본 정보를 입력하여 과제를 생성합니다.</p>
+            </div>
+            <div class="p-8 space-y-6">
+                <div class="space-y-2">
+                    <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">과제명</label>
+                    <input id="create-project-title" type="text" placeholder="어떤 일을 해야 하나요?"
+                        class="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl outline-none focus:ring-2 ring-indigo-100 transition-all font-bold text-slate-700">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="space-y-2">
+                        <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">상태</label>
+                        <select id="create-project-status"
+                            class="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl outline-none focus:ring-2 ring-indigo-100 transition-all font-bold text-slate-700">
+                            <option value="todo">To-Do</option>
+                            <option value="progress">In Progress</option>
+                            <option value="done">Done</option>
+                        </select>
+                    </div>
+                    <div class="space-y-2">
+                        <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">진척도</label>
+                        <div class="flex items-center gap-3 px-5 py-4 bg-slate-50 rounded-2xl">
+                            <input id="create-project-progress" type="range" min="0" max="100" value="0"
+                                class="flex-1 accent-indigo-600"
+                                oninput="document.getElementById('create-prog-val').innerText = this.value + '%'">
+                            <span id="create-prog-val"
+                                class="text-xs font-bold text-indigo-600 w-8 text-right">0%</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="space-y-2">
+                    <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">예상 완료일</label>
+                    <input id="create-project-due" type="date"
+                        class="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl outline-none focus:ring-2 ring-indigo-100 transition-all font-bold text-slate-700">
+                </div>
+            </div>
+            <div class="p-6 bg-slate-50 flex gap-3">
+                <button onclick="closeProjectCreate()"
+                    class="flex-1 py-4 text-slate-500 font-bold hover:bg-slate-100 rounded-2xl transition-all">취소</button>
+                <button onclick="handleCreateProject()"
+                    class="flex-[2] py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all">과제
+                    생성하기</button>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

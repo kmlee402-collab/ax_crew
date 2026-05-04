@@ -1,0 +1,162 @@
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css");
+
+:root {
+    --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "system-ui", "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans KR", "Malgun Gothic", sans-serif;
+    --primary: #6366f1;
+    --primary-dark: #4f46e5;
+    --sidebar-bg: #1e2532;
+    --bg-main: #f8fafc;
+}
+
+body {
+    font-family: var(--font-sans);
+    letter-spacing: -0.025em;
+    background-color: var(--bg-main);
+    color: #1e293b;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+/* Sidebar Styling */
+.sidebar-dark {
+    background: var(--sidebar-bg);
+    color: rgba(255, 255, 255, 0.4); /* 기본 글자색 더 밝게 */
+}
+
+.nav-item {
+    color: rgba(255, 255, 255, 0.5); /* 비활성화 글자색 */
+    transition: all 0.2s ease;
+}
+
+.nav-item:hover {
+    color: rgba(255, 255, 255, 0.9);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.nav-item-active {
+    background: white;
+    color: var(--primary) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); /* 강한 빛 대신 은은한 그림자 */
+}
+
+.nav-item-active i {
+    color: var(--primary);
+}
+
+.nav-item-active span.absolute {
+    background: var(--primary) !important;
+    width: 5px;
+    height: 5px;
+    left: 16px; /* 안쪽으로 들어오는 대신 버튼 내부 패딩 영역에 위치 */
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+/* Kanban Board Styling */
+.kanban-container {
+    padding: 2.5rem;
+    height: 100%;
+    overflow-x: auto;
+}
+
+.kanban-col {
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 2.5rem;
+    padding: 1.5rem;
+    min-height: calc(100vh - 250px);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+/* Project Card */
+.project-card {
+    background: white;
+    border-radius: 1.5rem;
+    padding: 1.25rem;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.04), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
+    border: 1px solid rgba(0, 0, 0, 0.03);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.project-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.08);
+}
+
+.tag-label {
+    background: #f1f5f9;
+    color: #64748b;
+    padding: 0.25rem 0.625rem;
+    border-radius: 0.5rem;
+    font-size: 0.625rem;
+    font-weight: 800;
+}
+
+/* Progress Bar */
+.progress-bar-bg {
+    background: #f1f5f9;
+    height: 6px;
+    border-radius: 999px;
+}
+
+.progress-bar-fill {
+    background: linear-gradient(90deg, #6366f1 0%, #a855f7 100%);
+    height: 100%;
+    border-radius: 999px;
+    transition: width 1s ease-out;
+}
+
+/* Buttons */
+.btn-primary {
+    background: var(--primary);
+    color: white;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 14px 0 rgba(99, 102, 241, 0.39);
+}
+
+.btn-primary:hover {
+    background: var(--primary-dark);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.23);
+}
+
+/* Typography */
+h1, h2, h3 {
+    font-weight: 800;
+    letter-spacing: -0.04em;
+}
+
+/* Layout helpers */
+.glass {
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+.custom-scrollbar::-webkit-scrollbar { width: 6px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.05); border-radius: 10px; }
+/* Quill Editor Custom Font Sizes (PT) */
+.ql-snow .ql-picker.ql-size .ql-picker-label::before,
+.ql-snow .ql-picker.ql-size .ql-picker-item::before { content: '12pt'; }
+
+.ql-snow .ql-picker.ql-size .ql-picker-label[data-value="10pt"]::before,
+.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="10pt"]::before { content: '10pt'; }
+.ql-snow .ql-picker.ql-size .ql-picker-label[data-value="12pt"]::before,
+.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="12pt"]::before { content: '12pt'; }
+.ql-snow .ql-picker.ql-size .ql-picker-label[data-value="14pt"]::before,
+.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="14pt"]::before { content: '14pt'; }
+.ql-snow .ql-picker.ql-size .ql-picker-label[data-value="16pt"]::before,
+.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="16pt"]::before { content: '16pt'; }
+.ql-snow .ql-picker.ql-size .ql-picker-label[data-value="18pt"]::before,
+.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="18pt"]::before { content: '18pt'; }
+.ql-snow .ql-picker.ql-size .ql-picker-label[data-value="20pt"]::before,
+.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="20pt"]::before { content: '20pt'; }
+.ql-snow .ql-picker.ql-size .ql-picker-label[data-value="24pt"]::before,
+.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="24pt"]::before { content: '24pt'; }
+.ql-snow .ql-picker.ql-size .ql-picker-label[data-value="30pt"]::before,
+.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="30pt"]::before { content: '30pt'; }
+.ql-snow .ql-picker.ql-size .ql-picker-label[data-value="36pt"]::before,
+.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="36pt"]::before { content: '36pt'; }
+
+.ql-snow .ql-picker.ql-size { width: 68px !important; }
