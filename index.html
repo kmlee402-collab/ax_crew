@@ -8,7 +8,8 @@
     <!-- Local Libraries -->
     <script src="lib/tailwind.min.js"></script>
     <script src="lib/lucide.min.js"></script>
-    <script src="lib/pocketbase.umd.js"></script>
+    <script src="lib/sql-asm.js"></script>
+    <script src="js/db.js?v=8.0"></script>
     <link rel="stylesheet" href="css/style.css">
 
     <!-- Quill Editor (v2.0 Local - Offline Ready) -->
@@ -33,13 +34,22 @@
             background-color: #ffffff !important;
             border: 1px solid #f1f5f9 !important;
         }
+
         /* Quill Font Size Labels in pt */
         .ql-snow .ql-picker.ql-size .ql-picker-label::before,
-        .ql-snow .ql-picker.ql-size .ql-picker-item::before { content: attr(data-value) !important; }
+        .ql-snow .ql-picker.ql-size .ql-picker-item::before {
+            content: attr(data-value) !important;
+        }
+
         .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="12pt"]::before,
-        .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="12pt"]::before { content: '12pt' !important; }
+        .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="12pt"]::before {
+            content: '12pt' !important;
+        }
+
         .ql-snow .ql-picker.ql-size .ql-picker-label:not([data-value])::before,
-        .ql-snow .ql-picker.ql-size .ql-picker-item:not([data-value])::before { content: '12pt' !important; }
+        .ql-snow .ql-picker.ql-size .ql-picker-item:not([data-value])::before {
+            content: '12pt' !important;
+        }
     </style>
 </head>
 
@@ -75,41 +85,64 @@
                 <div id="nav-main" class="hidden space-y-1">
                     <!-- 과제 관리 Group (Collapsible) -->
                     <div class="space-y-1">
-                        <button onclick="toggleSubmenu('submenu-tasks')" class="w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-black text-white/50 hover:bg-white/5 transition-all group">
+                        <button onclick="toggleSubmenu('submenu-tasks')"
+                            class="w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-black text-white/50 hover:bg-white/5 transition-all group">
                             <div class="flex items-center gap-3">
                                 <i data-lucide="folder-kanban" class="w-5 h-5 opacity-50 group-hover:opacity-100"></i>
                                 과제 관리
                             </div>
-                            <i data-lucide="chevron-down" id="arrow-tasks" class="w-4 h-4 transition-transform duration-300"></i>
+                            <i data-lucide="chevron-down" id="arrow-tasks"
+                                class="w-4 h-4 transition-transform duration-300"></i>
                         </button>
-                        
-                        <div id="submenu-tasks" class="hidden pl-4 space-y-1 overflow-hidden transition-all duration-300">
-                            <button onclick="switchTab('tasks-list')" id="btn-tasks-list" class="tab-btn nav-item w-full flex items-center gap-3 pl-10 pr-4 py-2.5 rounded-xl text-sm font-bold hover:bg-white/5 transition-all group relative">
-                                <span class="absolute left-4 w-1 h-1 rounded-full bg-white/20 group-hover:bg-indigo-400 transition-colors"></span>
+
+                        <div id="submenu-tasks"
+                            class="hidden pl-4 space-y-1 overflow-hidden transition-all duration-300">
+                            <button onclick="switchTab('tasks-list')" id="btn-tasks-list"
+                                class="tab-btn nav-item w-full flex items-center gap-3 pl-10 pr-4 py-2.5 rounded-xl text-sm font-bold hover:bg-white/5 transition-all group relative">
+                                <span
+                                    class="absolute left-4 w-1 h-1 rounded-full bg-white/20 group-hover:bg-indigo-400 transition-colors"></span>
                                 전체 과제 List
                             </button>
-                            <button onclick="switchTab('tasks')" id="btn-tasks" class="tab-btn nav-item w-full flex items-center gap-3 pl-10 pr-4 py-2.5 rounded-xl text-sm font-bold hover:bg-white/5 transition-all group relative">
-                                <span class="absolute left-4 w-1 h-1 rounded-full bg-white/20 group-hover:bg-indigo-400 transition-colors"></span>
+                            <button onclick="switchTab('tasks')" id="btn-tasks"
+                                class="tab-btn nav-item w-full flex items-center gap-3 pl-10 pr-4 py-2.5 rounded-xl text-sm font-bold hover:bg-white/5 transition-all group relative">
+                                <span
+                                    class="absolute left-4 w-1 h-1 rounded-full bg-white/20 group-hover:bg-indigo-400 transition-colors"></span>
                                 프로젝트 보드
                             </button>
                         </div>
                     </div>
-                    
+
                     <div class="h-px bg-white/5 mx-4 my-2"></div>
 
                     <!-- 지식창고 (Flat for now, or can be collapsible too) -->
-                    <button onclick="switchTab('manual')" id="btn-manual" class="tab-btn nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold hover:bg-white/5 transition-all group">
+                    <button onclick="switchTab('manual')" id="btn-manual"
+                        class="tab-btn nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold hover:bg-white/5 transition-all group">
                         <i data-lucide="book-open" class="w-5 h-5 opacity-50 group-hover:opacity-100"></i>
                         매뉴얼
                     </button>
-                    <button onclick="switchTab('timeline')" id="btn-timeline" class="tab-btn nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold hover:bg-white/5 transition-all group">
+                    <button onclick="switchTab('timeline')" id="btn-timeline"
+                        class="tab-btn nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold hover:bg-white/5 transition-all group">
                         <i data-lucide="message-circle" class="w-5 h-5 opacity-50 group-hover:opacity-100"></i>
                         Q&A
                     </button>
                 </div>
             </nav>
 
-            <div class="p-6 border-t border-white/5">
+            <div class="p-6 border-t border-white/5 space-y-3">
+                <!-- DB Management -->
+                <div class="space-y-2">
+                    <label
+                        class="w-full flex items-center justify-center gap-3 px-4 py-2 bg-white/5 hover:bg-white/10 rounded-xl text-xs font-bold text-white transition-all shadow-sm cursor-pointer">
+                        <i data-lucide="upload-cloud" class="w-4 h-4 text-indigo-400"></i> DB 불러오기
+                        <input type="file" id="db-upload" accept=".json" class="hidden"
+                            onchange="handleDBUpload(event)">
+                    </label>
+                    <button onclick="handleDBDownload()"
+                        class="w-full flex items-center gap-3 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-xs font-bold text-white transition-all shadow-sm">
+                        <i data-lucide="download-cloud" class="w-4 h-4"></i> DB 다운로드
+                    </button>
+                </div>
+
                 <button id="logout-btn" onclick="handleLogout()"
                     class="w-full flex items-center gap-3 px-4 py-2 text-xs font-bold text-white/40 hover:text-rose-400 transition-colors hidden">
                     <i data-lucide="log-out" class="w-4 h-4"></i>
@@ -172,20 +205,53 @@
     <div id="image-viewer-modal" class="fixed inset-0 z-[100] hidden flex items-center justify-center p-4 md:p-10">
         <div class="absolute inset-0 bg-slate-900/90 backdrop-blur-sm" onclick="closeImageViewer()"></div>
         <div class="relative max-w-full max-h-full flex items-center justify-center animate-zoom-in">
-            <button onclick="closeImageViewer()" class="absolute -top-12 right-0 md:-right-12 text-white/70 hover:text-white transition-colors p-2 group">
+            <button onclick="closeImageViewer()"
+                class="absolute -top-12 right-0 md:-right-12 text-white/70 hover:text-white transition-colors p-2 group">
                 <i data-lucide="x" class="w-8 h-8 group-hover:rotate-90 transition-transform duration-300"></i>
             </button>
-            <img id="viewer-img" src="" class="max-w-full max-h-[85vh] rounded-2xl shadow-2xl border border-white/10 object-contain">
+            <img id="viewer-img" src=""
+                class="max-w-full max-h-[85vh] rounded-2xl shadow-2xl border border-white/10 object-contain">
         </div>
     </div>
 
-    <script src="js/tabs.js"></script>
-    <script src="js/qa.js"></script>
-    <script src="js/app.js?v=3.0"></script>
+    <script src="js/tabs.js?v=8.0"></script>
+    <script src="js/qa.js?v=8.0"></script>
+    <script src="js/app.js?v=8.0"></script>
     <script>
-        // Initialize icons
+        // Initialize icons and DB
         lucide.createIcons();
+        DB.init();
     </script>
+
+    <!-- DB Connect Overlay -->
+    <div id="db-overlay"
+        class="fixed inset-0 bg-slate-900/80 z-[100] flex items-center justify-center backdrop-blur-sm hidden">
+        <div class="bg-white rounded-3xl p-10 max-w-md w-full text-center shadow-2xl relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-full h-2 bg-indigo-500"></div>
+            <div
+                class="w-20 h-20 bg-indigo-50 rounded-2xl flex items-center justify-center mx-auto mb-6 text-indigo-600">
+                <i data-lucide="database" class="w-10 h-10"></i>
+            </div>
+            <h2 class="text-2xl font-black text-slate-800 mb-3">DB 파일 연결 필요</h2>
+            <p class="text-slate-500 mb-8 leading-relaxed">
+                현재 시스템은 물리적 파일 기반으로 작동합니다.<br>
+                <b class="text-indigo-600">ax_crew.db</b> 파일을 선택하거나<br>새로 생성하여 연결해 주세요.
+            </p>
+            <div class="space-y-3">
+                <button id="btn-db-open" onclick="DB.connectFile()"
+                    class="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2">
+                    <i data-lucide="folder-open" class="w-5 h-5"></i>
+                    기존 DB 파일 열기
+                </button>
+                <button id="btn-db-new" onclick="DB.createNewFile()"
+                    class="w-full py-4 bg-white border-2 border-indigo-100 hover:bg-indigo-50 text-indigo-600 rounded-2xl font-bold transition-all flex items-center justify-center gap-2">
+                    <i data-lucide="file-plus" class="w-5 h-5"></i>
+                    새 DB 파일 만들기
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Project Workspace Modal (Full-screen Notion Style) -->
     <div id="project-modal" class="fixed inset-0 z-[60] hidden flex animate-fade-in">
         <!-- Sidebar: Project List -->

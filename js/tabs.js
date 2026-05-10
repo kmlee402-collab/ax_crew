@@ -14,14 +14,14 @@ function renderTabContent(tabId) {
     container.innerHTML = '';
 
     // Safety checks
-    const currentUserId = (typeof pb !== 'undefined' && pb.authStore.model) ? pb.authStore.model.id : null;
+    const currentUserId = (typeof DB !== 'undefined' && DB.getCurrentUser()) ? DB.getCurrentUser().id : null;
     const safeState = (typeof state !== 'undefined') ? state : { manuals: [], manualComments: [], manualLikes: [], currentManual: null };
 
     try {
         switch (tabId) {
             case 'mypage':
-                const user = pb.authStore.model || {};
-                const userAvatar = user.avatar ? pb.files.getUrl(user, user.avatar) : '';
+                const user = DB.getCurrentUser() || {};
+                const userAvatar = user.avatar ? DB.getFileUrl(user, user.avatar) : '';
 
                 container.innerHTML = `
                     <div class="max-w-[1440px] mx-auto px-10 py-12 animate-fade-in pb-20">
@@ -186,7 +186,7 @@ function renderTabContent(tabId) {
                     break;
                 }
                 const mAuthor = m.expand?.author || {};
-                const mAvatar = mAuthor.avatar ? pb.files.getUrl(mAuthor, mAuthor.avatar) : '';
+                const mAvatar = mAuthor.avatar ? DB.getFileUrl(mAuthor, mAuthor.avatar) : '';
                 const mDate = new Date(m.created).toLocaleDateString();
                 const mFiles = Array.isArray(m.file) ? m.file : (m.file ? [m.file] : []);
                 const likes = safeState.manualLikes || [];
@@ -197,9 +197,12 @@ function renderTabContent(tabId) {
                 if (mFiles.length > 0) {
                     contentHtml = contentHtml.replace(/\!\[(.*?)\]/g, (match, placeholderName) => {
                         // Find the actual file that matches the placeholder name
-                        const actualFile = mFiles.find(fn => fn === placeholderName || fn.startsWith(placeholderName.split('.')[0]));
-                        if (actualFile && actualFile.match(/\.(jpeg|jpg|gif|png|webp)$/i)) {
-                            const fileUrl = pb.files.getUrl(m, actualFile);
+                        const actualFile = mFiles.find(fn => {
+                            const fnName = typeof fn === 'string' ? fn : fn.name;
+                            return fnName === placeholderName || fnName.startsWith(placeholderName.split('.')[0]);
+                        });
+                        if (actualFile && (typeof actualFile === 'string' ? actualFile : actualFile.name).match(/\.(jpeg|jpg|gif|png|webp)$/i)) {
+                            const fileUrl = DB.getFileUrl(m, actualFile);
                             return `<img src="${fileUrl}" class="max-w-full h-auto rounded-2xl my-6 shadow-md border border-slate-100 block cursor-zoom-in" onclick="openImageViewer(this.src)">`;
                         }
                         return match; // Keep as text if no matching file found
@@ -252,7 +255,10 @@ function renderTabContent(tabId) {
                                     <div class="mt-16 pt-10 border-t border-slate-100">
                                         <h5 class="text-xs font-bold text-slate-400 uppercase mb-4 flex items-center gap-2"><i data-lucide="paperclip" class="w-4 h-4"></i>첨부파일 (${mFiles.length})</h5>
                                         <div class="flex flex-wrap gap-2">
-                                            ${mFiles.map(fn => `<a href="${pb.files.getUrl(m, fn)}" target="_blank" class="flex items-center gap-2 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-600 hover:text-indigo-600 transition-all shadow-sm"><i data-lucide="download" class="w-4 h-4"></i>${fn}</a>`).join('')}
+                                            ${mFiles.map(fn => {
+                                                const fnName = typeof fn === 'string' ? fn : fn.name;
+                                                return `<a href="${DB.getFileUrl(m, fn)}" target="_blank" class="flex items-center gap-2 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-600 hover:text-indigo-600 transition-all shadow-sm"><i data-lucide="download" class="w-4 h-4"></i>${fnName}</a>`;
+                                            }).join('')}
                                         </div>
                                     </div>
                                 ` : ''}
@@ -265,10 +271,10 @@ function renderTabContent(tabId) {
                                 <form onsubmit="handleManualComment(event, '${m.id}')" class="space-y-4">
                                     <div class="flex gap-4">
                                         <div class="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center flex-shrink-0 border border-indigo-100 overflow-hidden">
-                                            ${pb.authStore.model.avatar ? `<img src="${pb.files.getUrl(pb.authStore.model, pb.authStore.model.avatar)}" class="w-full h-full object-cover">` : `<i data-lucide="user" class="w-5 h-5 text-indigo-300"></i>`}
+                                            ${DB.getCurrentUser().avatar ? `<img src="${DB.getFileUrl(DB.getCurrentUser(), DB.getCurrentUser().avatar)}" class="w-full h-full object-cover">` : `<i data-lucide="user" class="w-5 h-5 text-indigo-300"></i>`}
                                         </div>
                                         <div class="flex-1 bg-white rounded-2xl border border-slate-200 p-2 focus-within:border-indigo-300 transition-all shadow-sm">
-                                            <textarea id="comment-text" placeholder="의견을 남겨보세요..." class="w-full px-4 py-2 border-none outline-none resize-none placeholder:text-slate-300 text-slate-700 min-h-[80px] bg-transparent"></textarea>
+                                            <textarea id="comment-text" placeholder="의견을 남겨보세요... (Ctrl+V 이미지 붙여넣기 가능)" onpaste="handleManualCommentPaste(event)" class="w-full px-4 py-2 border-none outline-none resize-none placeholder:text-slate-300 text-slate-700 min-h-[80px] bg-transparent"></textarea>
                                             
                                             <!-- Comment Image Preview Container -->
                                             <div id="comment-image-preview" class="flex flex-wrap gap-2 p-2 hidden"></div>
@@ -295,7 +301,7 @@ function renderTabContent(tabId) {
                                     </div>
                                 ` : parentComments.map(c => {
                     const cAuthor = c.expand?.author || {};
-                    const cAvatar = cAuthor.avatar ? pb.files.getUrl(cAuthor, cAuthor.avatar) : '';
+                    const cAvatar = cAuthor.avatar ? DB.getFileUrl(cAuthor, cAuthor.avatar) : '';
                     const cDate = new Date(c.created).toLocaleString();
                     const cFiles = c.file || [];
                     const isMe = currentUserId && c.author === currentUserId;
@@ -323,7 +329,7 @@ function renderTabContent(tabId) {
                                                 ${cFiles.length > 0 ? `
                                                     <div class="flex flex-wrap gap-2 mt-3">
                                                         ${cFiles.map(fn => `
-                                                            <img src="${pb.files.getUrl(c, fn)}" class="max-w-[200px] max-h-[300px] rounded-xl border border-slate-100 shadow-sm cursor-zoom-in" onclick="openImageViewer(this.src)">
+                                                            <img src="${DB.getFileUrl(c, fn)}" class="max-w-[200px] max-h-[300px] rounded-xl border border-slate-100 shadow-sm cursor-zoom-in" onclick="openImageViewer(this.src)">
                                                         `).join('')}
                                                     </div>
                                                 ` : ''}
@@ -387,8 +393,8 @@ function renderTabContent(tabId) {
                 break;
 
             case 'timeline':
-                const qUser = pb.authStore.model || {};
-                const qAvatar = qUser.avatar ? pb.files.getUrl(qUser, qUser.avatar) : '';
+                const qUser = DB.getCurrentUser() || {};
+                const qAvatar = qUser.avatar ? DB.getFileUrl(qUser, qUser.avatar) : '';
 
                 container.innerHTML = `
                     <div class="max-w-[1440px] mx-auto px-10 py-12 space-y-8 animate-fade-in pb-20">
@@ -404,7 +410,7 @@ function renderTabContent(tabId) {
                                         ${qAvatar ? `<img src="${qAvatar}" class="w-full h-full object-cover">` : `<i data-lucide="user" class="w-6 h-6 text-indigo-300"></i>`}
                                     </div>
                                     <div class="flex-1 space-y-4">
-                                        <textarea id="qa-text" placeholder="무엇이 궁금하신가요?" class="w-full text-xl border-none outline-none resize-none placeholder:text-slate-200 text-slate-700 leading-relaxed py-2 min-h-[100px] bg-transparent"></textarea>
+                                        <textarea id="qa-text" placeholder="무엇이 궁금하신가요? (Ctrl+V 이미지 붙여넣기 가능)" onpaste="handleQAPaste(event)" class="w-full text-xl border-none outline-none resize-none placeholder:text-slate-200 text-slate-700 leading-relaxed py-2 min-h-[100px] bg-transparent"></textarea>
                                         
                                         <!-- Image Preview Container -->
                                         <div id="qa-image-preview" class="flex flex-wrap gap-2 hidden"></div>
@@ -518,10 +524,15 @@ function renderTabContent(tabId) {
         }
     } catch (err) {
         console.error('Render Error:', err);
-        container.innerHTML = `<div class="p-12 text-center bg-white rounded-3xl border border-slate-200 text-rose-500">
-            <h3 class="font-bold text-xl mb-2">화면 로딩 오류</h3>
-            <p class="text-sm opacity-70">${err.message}</p>
-            <button onclick="location.reload()" class="mt-4 px-6 py-2 bg-rose-500 text-white rounded-xl">페이지 새로고침</button>
+        container.innerHTML = `<div class="p-20 text-center bg-white rounded-[2.5rem] border border-slate-100 shadow-premium">
+            <div class="w-16 h-16 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-6">
+                <i data-lucide="alert-circle" class="w-8 h-8"></i>
+            </div>
+            <h3 class="text-xl font-black text-slate-900 mb-2">화면을 불러오지 못했습니다</h3>
+            <p class="text-slate-400 font-bold mb-8">${err.message}</p>
+            <button onclick="switchTab('tasks')" class="px-8 py-3.5 bg-slate-900 text-white rounded-2xl font-black text-sm shadow-xl shadow-slate-200 hover:scale-105 active:scale-95 transition-all">
+                홈으로 돌아가기
+            </button>
         </div>`;
     }
 
@@ -533,7 +544,7 @@ function renderTabContent(tabId) {
  */
 function renderProjectCard(p) {
     const owner = p.expand?.owner || {};
-    const avatarUrl = owner.avatar ? pb.files.getUrl(owner, owner.avatar) : '';
+    const avatarUrl = owner.avatar ? DB.getFileUrl(owner, owner.avatar) : '';
     const progress = p.progress || 0;
     const dueDate = p.due_date ? new Date(p.due_date).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' }) : '미정';
 
@@ -573,3 +584,4 @@ function renderProjectCard(p) {
         </div>
     `;
 }
+

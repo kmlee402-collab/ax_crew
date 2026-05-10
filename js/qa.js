@@ -11,7 +11,7 @@ async function fetchQuestions() {
     try {
         console.log('Fetching questions...');
         // 1. Fetch top-level questions
-        const records = await pb.collection('questions').getFullList({
+        const records = await DB.getAll('questions', {
             sort: '-created',
             expand: 'user',
             filter: 'parent = null'
@@ -22,7 +22,7 @@ async function fetchQuestions() {
         // 2. Fetch ALL likes for questions (Separate try-catch to not block)
         try {
             console.log('Fetching likes...');
-            qaLikeRecords = await pb.collection('question_likes').getFullList();
+            qaLikeRecords = await DB.getAll('question_likes');
             console.log('Likes fetched:', qaLikeRecords.length);
         } catch (likeErr) {
             console.warn('Question Likes collection might be missing:', likeErr.message);
@@ -51,12 +51,12 @@ async function renderQAFeed() {
         return;
     }
 
-    const currentUserId = pb.authStore.model?.id;
+    const currentUserId = DB.getCurrentUser()?.id;
 
     // Fetch replies
     let allReplies = [];
     try {
-        allReplies = await pb.collection('questions').getFullList({
+        allReplies = await DB.getAll('questions', {
             filter: 'parent != null',
             expand: 'user',
             sort: 'created'
@@ -67,7 +67,7 @@ async function renderQAFeed() {
         const fArray = Array.isArray(files) ? files : (files ? [files] : []);
         if (fArray.length === 0) return '';
         const imagesHtml = fArray.map(f => {
-            const url = pb.files.getUrl(record, f);
+            const url = DB.getFileUrl(record, f);
             return `<img src="${url}" class="rounded-xl border border-slate-100 shadow-sm max-h-60 object-cover cursor-zoom-in" onclick="openImageViewer('${url}')">`;
         }).join('');
         return `<div class="grid grid-cols-${Math.min(fArray.length, 2)} gap-2 mt-3">${imagesHtml}</div>`;
@@ -75,7 +75,7 @@ async function renderQAFeed() {
 
     feed.innerHTML = state.questions.map(q => {
         const qAuth = q.expand?.user || {};
-        const qAvatar = qAuth.avatar ? pb.files.getUrl(qAuth, qAuth.avatar) : '';
+        const qAvatar = qAuth.avatar ? DB.getFileUrl(qAuth, qAuth.avatar) : '';
         const qDate = new Date(q.created).toLocaleString();
         const isMe = currentUserId && q.user === currentUserId;
 
@@ -87,7 +87,7 @@ async function renderQAFeed() {
         const qReplies = allReplies.filter(r => r.parent === q.id);
         const repliesHtml = qReplies.map(r => {
             const rAuth = r.expand?.user || {};
-            const rAvatar = rAuth.avatar ? pb.files.getUrl(rAuth, rAuth.avatar) : '';
+            const rAvatar = rAuth.avatar ? DB.getFileUrl(rAuth, rAuth.avatar) : '';
             return `
                 <div class="flex gap-3 pt-4 first:pt-0 border-t border-slate-50 mt-4 first:mt-0 animate-fade-in">
                     <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center overflow-hidden flex-shrink-0 border border-slate-200">
@@ -163,21 +163,21 @@ async function renderQAFeed() {
 async function subscribeQuestions() {
     if (qaUnsubscribe) qaUnsubscribe();
     try {
-        qaUnsubscribe = await pb.collection('questions').subscribe('*', () => fetchQuestions());
-        await pb.collection('question_likes').subscribe('*', () => fetchQuestions());
+        qaUnsubscribe = await DB.subscribe('questions', () => fetchQuestions());
+        await DB.subscribe('question_likes', () => fetchQuestions());
     } catch (e) { console.warn('Subscription error:', e); }
 }
 
 async function handleQALike(questionId) {
-    if (!pb.authStore.model) return;
-    const currentUserId = pb.authStore.model.id;
+    if (!DB.getCurrentUser()) return;
+    const currentUserId = DB.getCurrentUser().id;
 
     try {
         const existing = qaLikeRecords.find(l => l.question === questionId && l.user === currentUserId);
         if (existing) {
-            await pb.collection('question_likes').delete(existing.id);
+            await DB.delete('question_likes', existing.id);
         } else {
-            await pb.collection('question_likes').create({
+            await DB.create('question_likes', {
                 question: questionId,
                 user: currentUserId
             });
@@ -185,24 +185,91 @@ async function handleQALike(questionId) {
     } catch (err) { console.error('Like Error:', err); }
 }
 
+let qaMainPastedFiles = [];
+
 async function handleQAPublish() {
     const textInput = document.getElementById('qa-text');
     const fileInput = document.getElementById('qa-files');
-    if (!textInput || !textInput.value.trim()) return;
+    if (!textInput || (!textInput.value.trim() && fileInput.files.length === 0 && qaMainPastedFiles.length === 0)) return;
 
     try {
         const formData = new FormData();
         formData.append('Text', textInput.value);
-        formData.append('user', pb.authStore.model.id);
+        formData.append('user', DB.getCurrentUser().id);
         if (fileInput.files.length > 0) {
             for (let file of fileInput.files) formData.append('file', file);
         }
-        await pb.collection('questions').create(formData);
+        if (qaMainPastedFiles.length > 0) {
+            for (let file of qaMainPastedFiles) formData.append('file', file);
+        }
+        await DB.create('questions', formData);
         textInput.value = '';
         fileInput.value = '';
+        qaMainPastedFiles = [];
         document.getElementById('qa-image-preview').innerHTML = '';
         document.getElementById('qa-image-preview').classList.add('hidden');
     } catch (err) { console.error('Publish Error:', err); }
+}
+
+function handleQAPaste(e) {
+    const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+    let found = false;
+    for (let item of items) {
+        if (item.type.indexOf('image') !== -1) {
+            const blob = item.getAsFile();
+            if (!blob) continue;
+            const file = new File([blob], `qa_pasted_${Date.now()}.png`, { type: blob.type });
+            qaMainPastedFiles.push(file);
+            found = true;
+        }
+    }
+    if (found) updateQAMainPreview();
+}
+
+function updateQAMainPreview() {
+    const preview = document.getElementById('qa-image-preview');
+    if (!preview) return;
+    
+    const fileInput = document.getElementById('qa-files');
+    const inputFiles = fileInput ? Array.from(fileInput.files) : [];
+    const allFiles = [...inputFiles, ...qaMainPastedFiles];
+    
+    preview.innerHTML = '';
+    if (allFiles.length > 0) {
+        preview.classList.remove('hidden');
+        allFiles.forEach((file, index) => {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'relative w-20 h-20 rounded-xl overflow-hidden border border-slate-100 shadow-sm group';
+                
+                const img = document.createElement('img');
+                img.src = ev.target.result;
+                img.className = 'w-full h-full object-cover';
+                
+                // Allow removing pasted files only for simplicity, or just visual
+                wrapper.appendChild(img);
+                
+                if (index >= inputFiles.length) {
+                    const pastedIndex = index - inputFiles.length;
+                    const removeBtn = document.createElement('button');
+                    removeBtn.className = 'absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all text-white';
+                    removeBtn.innerHTML = '<i data-lucide="x" class="w-4 h-4"></i>';
+                    removeBtn.onclick = () => {
+                        qaMainPastedFiles.splice(pastedIndex, 1);
+                        updateQAMainPreview();
+                    };
+                    wrapper.appendChild(removeBtn);
+                }
+                
+                preview.appendChild(wrapper);
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            };
+            reader.readAsDataURL(file);
+        });
+    } else { 
+        preview.classList.add('hidden'); 
+    }
 }
 
 const qaReplyFiles = {};
@@ -211,6 +278,7 @@ function handleQAReplyPaste(e, parentId) {
     for (let item of items) {
         if (item.type.indexOf('image') !== -1) {
             const blob = item.getAsFile();
+            if (!blob) continue;
             const file = new File([blob], `reply_pasted_${Date.now()}.png`, { type: blob.type });
             if (!qaReplyFiles[parentId]) qaReplyFiles[parentId] = [];
             qaReplyFiles[parentId].push(file);
@@ -250,10 +318,10 @@ async function handleQAReply(e, parentId) {
     try {
         const formData = new FormData();
         formData.append('Text', textarea.value);
-        formData.append('user', pb.authStore.model.id);
+        formData.append('user', DB.getCurrentUser().id);
         formData.append('parent', parentId);
         if (qaReplyFiles[parentId]) qaReplyFiles[parentId].forEach(f => formData.append('file', f));
-        await pb.collection('questions').create(formData);
+        await DB.create('questions', formData);
         textarea.value = '';
         delete qaReplyFiles[parentId];
         const preview = document.getElementById(`qa-reply-preview-${parentId}`);
@@ -261,22 +329,7 @@ async function handleQAReply(e, parentId) {
     } catch (err) { console.error('Reply Error:', err); }
 }
 function handleQAFileChange(e) {
-    const preview = document.getElementById('qa-image-preview');
-    if (!preview) return;
-    preview.innerHTML = '';
-    if (e.target.files.length > 0) {
-        preview.classList.remove('hidden');
-        Array.from(e.target.files).forEach(file => {
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                const img = document.createElement('img');
-                img.src = ev.target.result;
-                img.className = 'w-20 h-20 object-cover rounded-xl border border-slate-100 shadow-sm';
-                preview.appendChild(img);
-            };
-            reader.readAsDataURL(file);
-        });
-    } else { preview.classList.add('hidden'); }
+    updateQAMainPreview();
 }
 function toggleQACommentForm(id) {
     const container = document.getElementById(`qa-replies-${id}`);
@@ -284,5 +337,6 @@ function toggleQACommentForm(id) {
 }
 async function handleDeleteQuestion(id) {
     if (!confirm('정말 삭제하시겠습니까?')) return;
-    try { await pb.collection('questions').delete(id); } catch (err) { console.error('Delete Error:', err); }
+    try { await DB.delete('questions', id); } catch (err) { console.error('Delete Error:', err); }
 }
+

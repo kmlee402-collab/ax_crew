@@ -1,7 +1,7 @@
 /**
  * PocketBase Initialization
  */
-const pb = new PocketBase('http://127.0.0.1:8090');
+// Local DB initialized via db.js
 
 /**
  * DOM Elements
@@ -59,7 +59,10 @@ function toggleSubmenu(id) {
  */
 function switchTab(tabId) {
     state.currentTab = tabId;
-    localStorage.setItem('ax_current_tab', tabId);
+    
+    // 상세 페이지나 작성 페이지는 기본 'manual' 탭으로 저장하여 새로고침 시 오류 방지
+    const tabToSave = (tabId === 'manual-detail' || tabId === 'manual-write') ? 'manual' : tabId;
+    localStorage.setItem('ax_current_tab', tabToSave);
 
     if (tabId !== 'timeline' && typeof qaUnsubscribe !== 'undefined' && qaUnsubscribe) {
         qaUnsubscribe();
@@ -135,7 +138,7 @@ async function handleLogin(e) {
     const formData = new FormData(e.target);
     const data = Object.fromEntries(formData);
     try {
-        await pb.collection('users').authWithPassword(data.email, data.password);
+        await DB.login(data.email, data.password);
         showModal('환영합니다!', '로그인에 성공했습니다.', 'success');
         switchTab('tasks');
         updateUserInfoDisplay();
@@ -151,8 +154,8 @@ async function handleJoin(e) {
     const data = Object.fromEntries(formData);
     data.passwordConfirm = data.password;
     try {
-        await pb.collection('users').create(data);
-        await pb.collection('users').authWithPassword(data.email, data.password);
+        await DB.create('users', data);
+        await DB.login(data.email, data.password);
         showModal('가입 성공!', 'AX Crew의 일원이 되신 것을 환영합니다.', 'success');
         switchTab('tasks');
         updateUserInfoDisplay();
@@ -163,7 +166,7 @@ async function handleJoin(e) {
 }
 
 function handleLogout() {
-    pb.authStore.clear();
+    DB.logout();
     updateUserInfoDisplay();
     switchTab('login');
     showModal('로그아웃', '정상적으로 로그아웃되었습니다.', 'success');
@@ -182,7 +185,7 @@ async function fetchManuals() {
         return;
     }
     try {
-        const records = await pb.collection('manuals').getFullList({ sort: '-created', expand: 'author' });
+        const records = await DB.getAll('manuals', { sort: '-created', expand: 'author' });
         state.manuals = records;
         state.filteredManuals = records;
         renderManualsList();
@@ -216,11 +219,11 @@ function renderManualsList() {
 
 async function viewManualDetail(manualId) {
     try {
-        const manual = await pb.collection('manuals').getOne(manualId, { expand: 'author' });
+        const manual = await DB.getById('manuals', manualId, { expand: 'author' });
         state.currentManual = manual;
         const [comments, likes] = await Promise.all([
-            pb.collection('manual_comments').getFullList({ filter: `manual = "${manualId}"`, sort: 'created', expand: 'author' }),
-            pb.collection('manual_likes').getFullList({ filter: `manual = "${manualId}"` })
+            DB.getAll('manual_comments', { filter: `manual = "${manualId}"`, sort: 'created', expand: 'author' }),
+            DB.getAll('manual_likes', { filter: `manual = "${manualId}"` })
         ]);
         state.manualComments = comments;
         state.manualLikes = likes;
@@ -289,7 +292,7 @@ function initQuill() {
 }
 
 function updateUserInfoDisplay() {
-    state.currentUser = pb.authStore.model;
+    state.currentUser = DB.getCurrentUser();
     const navAuth = document.getElementById('nav-auth');
     const navMain = document.getElementById('nav-main');
     const logoutBtn = document.getElementById('logout-btn');
@@ -306,7 +309,7 @@ function updateUserInfoDisplay() {
             document.getElementById('header-user-dept').textContent = state.currentUser.department || '부서 미지정';
             const avatarContainer = document.getElementById('header-user-avatar');
             if (state.currentUser.avatar) {
-                avatarContainer.innerHTML = `<img src="${pb.files.getUrl(state.currentUser, state.currentUser.avatar)}" class="w-full h-full object-cover">`;
+                avatarContainer.innerHTML = `<img src="${DB.getFileUrl(state.currentUser, state.currentUser.avatar)}" class="w-full h-full object-cover">`;
             } else {
                 avatarContainer.innerHTML = `<i data-lucide="user" class="w-5 h-5"></i>`;
             }
@@ -330,9 +333,10 @@ function handleManualPaste(e) {
     const items = (e.clipboardData || e.originalEvent.clipboardData).items;
     for (let item of items) {
         if (item.kind === 'file' && item.type.startsWith('image/')) {
-            const file = item.getAsFile();
+            const blob = item.getAsFile();
+            if (!blob) continue;
             const fileName = `pasted_img_${Date.now()}.png`;
-            const renamedFile = new File([file], fileName, { type: 'image/png' });
+            const renamedFile = new File([blob], fileName, { type: 'image/png' });
             const reader = new FileReader();
             reader.onload = (event) => {
                 const range = quill.getSelection();
@@ -384,17 +388,17 @@ async function handleManualPublish() {
         const formData = new FormData();
         formData.append('title', titleInput.value);
         formData.append('content', tempDiv.innerHTML);
-        formData.append('author', pb.authStore.model.id);
+        formData.append('author', DB.getCurrentUser().id);
         const fileInput = document.getElementById('manual-files');
         if (fileInput && fileInput.files.length > 0) { for (let file of fileInput.files) formData.append('file', file); }
         state.pastedFiles.forEach(f => formData.append('file', f));
         if (state.isEditMode && state.currentManual?.id) {
-            await pb.collection('manuals').update(state.currentManual.id, formData);
+            await DB.update('manuals', state.currentManual.id, formData);
             state.isEditMode = false; state.pastedFiles = [];
             showModal('수정 완료', '매뉴얼이 성공적으로 수정되었습니다.', 'success');
             setTimeout(() => { viewManualDetail(state.currentManual.id); }, 100);
         } else {
-            await pb.collection('manuals').create(formData);
+            await DB.create('manuals', formData);
             state.isEditMode = false; state.pastedFiles = [];
             showModal('발행 완료', '새로운 매뉴얼이 등록되었습니다.', 'success');
             setTimeout(() => { switchTab('manual'); }, 100);
@@ -409,10 +413,10 @@ async function handleManualComment(event, manualId, parentId = null) {
     if (!content && state.commentFiles.length === 0) { showModal('입력 부족', '내용이나 이미지를 추가해 주세요.', 'error'); return; }
     try {
         const formData = new FormData();
-        formData.append('manual', manualId); formData.append('author', pb.authStore.model.id);
+        formData.append('manual', manualId); formData.append('author', DB.getCurrentUser().id);
         formData.append('content', content); if (parentId) formData.append('parent', parentId);
         state.commentFiles.forEach(file => formData.append('file', file));
-        await pb.collection('manual_comments').create(formData);
+        await DB.create('manual_comments', formData);
         state.commentFiles = [];
         const preview = document.getElementById('comment-image-preview');
         if (preview) { preview.innerHTML = ''; preview.classList.add('hidden'); }
@@ -423,16 +427,53 @@ async function handleManualComment(event, manualId, parentId = null) {
 
 function handleCommentFileChange(event) {
     const files = Array.from(event.target.files);
+    if (files.length === 0) return;
+    files.forEach(file => state.commentFiles.push(file));
+    updateManualCommentPreview();
+}
+
+function handleManualCommentPaste(e) {
+    const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+    let found = false;
+    for (let item of items) {
+        if (item.type.indexOf('image') !== -1) {
+            const blob = item.getAsFile();
+            if (!blob) continue;
+            const file = new File([blob], `comment_pasted_${Date.now()}.png`, { type: blob.type });
+            state.commentFiles.push(file);
+            found = true;
+        }
+    }
+    if (found) updateManualCommentPreview();
+}
+
+function updateManualCommentPreview() {
     const preview = document.getElementById('comment-image-preview');
-    if (!preview || files.length === 0) return;
+    if (!preview) return;
+    
+    if (state.commentFiles.length === 0) {
+        preview.classList.add('hidden');
+        preview.innerHTML = '';
+        return;
+    }
+    
     preview.classList.remove('hidden');
-    files.forEach(file => {
-        state.commentFiles.push(file);
+    preview.innerHTML = '';
+    state.commentFiles.forEach((file, index) => {
         const reader = new FileReader();
         reader.onload = (e) => {
             const div = document.createElement('div');
             div.className = 'relative group w-20 h-20';
-            div.innerHTML = `<img src="${e.target.result}" class="w-full h-full object-cover rounded-xl border border-slate-200"><button type="button" class="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100" onclick="this.parentElement.remove()"><i data-lucide="x" class="w-3 h-3"></i></button>`;
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'absolute -top-2 -right-2 bg-rose-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100';
+            btn.innerHTML = '<i data-lucide="x" class="w-3 h-3"></i>';
+            btn.onclick = () => {
+                state.commentFiles.splice(index, 1);
+                updateManualCommentPreview();
+            };
+            div.innerHTML = `<img src="${e.target.result}" class="w-full h-full object-cover rounded-xl border border-slate-200">`;
+            div.appendChild(btn);
             preview.appendChild(div);
             if (typeof lucide !== 'undefined') lucide.createIcons();
         };
@@ -442,18 +483,18 @@ function handleCommentFileChange(event) {
 
 function handleManualEditStart(id) { state.isEditMode = true; switchTab('manual-write'); }
 async function handleManualLike(manualId) {
-    if (!pb.authStore.model) { showModal('로그인 필요', '로그인 후 이용 가능합니다.', 'error'); return; }
+    if (!DB.getCurrentUser()) { showModal('로그인 필요', '로그인 후 이용 가능합니다.', 'error'); return; }
     try {
-        const existing = state.manualLikes.find(l => l.user === pb.authStore.model.id);
-        if (existing) { await pb.collection('manual_likes').delete(existing.id); }
-        else { await pb.collection('manual_likes').create({ manual: manualId, user: pb.authStore.model.id }); }
+        const existing = state.manualLikes.find(l => l.user === DB.getCurrentUser().id);
+        if (existing) { await DB.delete('manual_likes', existing.id); }
+        else { await DB.create('manual_likes', { manual: manualId, user: DB.getCurrentUser().id }); }
         await viewManualDetail(manualId);
     } catch (err) { console.error(err); }
 }
 
 async function handleDeleteComment(commentId, manualId) {
     if (!confirm('댓글을 삭제하시겠습니까?')) return;
-    try { await pb.collection('manual_comments').delete(commentId); viewManualDetail(manualId); }
+    try { await DB.delete('manual_comments', commentId); viewManualDetail(manualId); }
     catch (err) { console.error(err); }
 }
 
@@ -483,7 +524,7 @@ function showModal(title, message, type = 'info') {
  */
 async function fetchProjects() {
     try {
-        const records = await pb.collection('projects').getFullList({ sort: '-created', expand: 'owner' });
+        const records = await DB.getAll('projects', { sort: '-created', expand: 'owner' });
         state.projects = records;
         renderTabContent('tasks');
     } catch (err) { console.error(err); }
@@ -531,8 +572,8 @@ async function openProjectDetail(projectId, isEdit = false) {
     }
 
     const p = state.currentProject;
-    const owner = p.expand?.owner || pb.authStore.model;
-    const isOwner = pb.authStore.model?.id === p.owner;
+    const owner = p.expand?.owner || DB.getCurrentUser();
+    const isOwner = DB.getCurrentUser()?.id === p.owner;
     const statusColor = p.status === 'done' ? 'bg-emerald-50 text-emerald-500' : p.status === 'progress' ? 'bg-indigo-50 text-indigo-500' : 'bg-amber-50 text-amber-600';
 
     content.innerHTML = `
@@ -589,7 +630,7 @@ async function openProjectDetail(projectId, isEdit = false) {
                                     <span>Assignee</span>
                                 </div>
                                 <div class="flex items-center gap-3">
-                                    <img src="${owner.avatar ? pb.files.getUrl(owner, owner.avatar) : 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + owner.name}" class="w-8 h-8 rounded-full border border-white shadow-sm">
+                                    <img src="${owner.avatar ? DB.getFileUrl(owner, owner.avatar) : 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + owner.name}" class="w-8 h-8 rounded-full border border-white shadow-sm">
                                     <span class="font-black text-slate-800 text-sm tracking-tight">${owner.name || 'Anonymous'} <span class="text-slate-400 font-bold ml-1 text-[10px]">/ ${owner.department || ''}</span></span>
                                 </div>
                             </div>
@@ -674,7 +715,7 @@ async function fetchProjectComments(projectId) {
     const listElem = document.getElementById('project-comments-list');
     try {
         // 댓글 및 답글 목록 가져오기 (작성자 정보 포함)
-        const comments = await pb.collection('project_comments').getFullList({
+        const comments = await DB.getAll('project_comments', {
             filter: `project = "${projectId}"`,
             sort: 'created',
             expand: 'author'
@@ -695,7 +736,7 @@ async function fetchProjectComments(projectId) {
         listElem.innerHTML = parentComments.map(comment => {
             const author = comment.expand?.author;
             const authorName = author?.name || '익명 크루';
-            const avatarUrl = author?.avatar ? pb.files.getUrl(author, author.avatar) : null;
+            const avatarUrl = author?.avatar ? DB.getFileUrl(author, author.avatar) : null;
             const date = new Date(comment.created).toLocaleString();
             const commentReplies = replies.filter(r => r.parent === comment.id);
 
@@ -723,7 +764,7 @@ async function fetchProjectComments(projectId) {
                         ${comment.file && comment.file.length > 0 ? `
                             <div class="flex flex-wrap gap-2 mb-4">
                                 ${comment.file.map(f => `
-                                    <img src="${pb.files.getUrl(comment, f)}" 
+                                    <img src="${DB.getFileUrl(comment, f)}" 
                                         class="max-w-[200px] max-h-[150px] rounded-xl border border-slate-100 shadow-sm cursor-zoom-in object-cover" 
                                         onclick="openImageViewer(this.src)">
                                 `).join('')}
@@ -755,7 +796,7 @@ async function fetchProjectComments(projectId) {
                             ${commentReplies.map(reply => {
                 const rAuthor = reply.expand?.author;
                 const rAuthorName = rAuthor?.name || '익명 크루';
-                const rAvatarUrl = rAuthor?.avatar ? pb.files.getUrl(rAuthor, rAuthor.avatar) : null;
+                const rAvatarUrl = rAuthor?.avatar ? DB.getFileUrl(rAuthor, rAuthor.avatar) : null;
                 return `
                                     <div class="bg-slate-50 border border-slate-100 rounded-2xl p-5 shadow-sm">
                                         <div class="flex items-center gap-3 mb-3">
@@ -777,7 +818,7 @@ async function fetchProjectComments(projectId) {
                                         ${reply.file && reply.file.length > 0 ? `
                                             <div class="flex flex-wrap gap-2 mt-3">
                                                 ${reply.file.map(f => `
-                                                    <img src="${pb.files.getUrl(reply, f)}" 
+                                                    <img src="${DB.getFileUrl(reply, f)}" 
                                                         class="max-w-[150px] max-h-[120px] rounded-xl border border-slate-100 shadow-sm cursor-zoom-in object-cover" 
                                                         onclick="openImageViewer(this.src)">
                                                 `).join('')}
@@ -804,7 +845,7 @@ async function saveProjectComment(projectId, parentId = null) {
     const content = document.getElementById(inputId).value.trim();
 
     if (!content) return;
-    if (!pb.authStore.isValid) {
+    if (!(DB.getCurrentUser() !== null)) {
         showModal('알림', '로그인이 필요한 기능입니다.', 'error');
         return;
     }
@@ -813,7 +854,7 @@ async function saveProjectComment(projectId, parentId = null) {
         const formData = new FormData();
         formData.append('content', content);
         formData.append('project', projectId);
-        formData.append('author', pb.authStore.model.id);
+        formData.append('author', DB.getCurrentUser().id);
         if (parentId) formData.append('parent', parentId);
 
         // 이미지 파일 추가
@@ -824,7 +865,7 @@ async function saveProjectComment(projectId, parentId = null) {
             });
         }
 
-        await pb.collection('project_comments').create(formData);
+        await DB.create('project_comments', formData);
         
         // 입력창 및 파일 초기화
         document.getElementById(inputId).value = '';
@@ -861,6 +902,7 @@ function handleProjectCommentPaste(e, id) {
     for (let item of items) {
         if (item.type.indexOf('image') !== -1) {
             const blob = item.getAsFile();
+            if (!blob) continue;
             const file = new File([blob], `pasted_img_${Date.now()}.png`, { type: blob.type });
             
             if (!projectCommentFiles[id]) projectCommentFiles[id] = [];
@@ -916,6 +958,25 @@ function initProjectQuill(isEdit = false) {
                 Size.whitelist = ['10pt', '12pt', '14pt', '16pt', '18pt', '20pt', '24pt', '30pt', '36pt'];
                 Quill.register(Size, true);
 
+                // Custom Video Blot for Local Files
+                const BlockEmbed = Quill.import('blots/block/embed');
+                class VideoBlot extends BlockEmbed {
+                    static create(value) {
+                        const node = super.create();
+                        node.setAttribute('src', value);
+                        node.setAttribute('controls', 'true');
+                        node.setAttribute('class', 'max-w-full rounded-2xl my-4 shadow-xl bg-black');
+                        node.style.display = 'block';
+                        return node;
+                    }
+                    static value(node) {
+                        return node.getAttribute('src');
+                    }
+                }
+                VideoBlot.blotName = 'video';
+                VideoBlot.tagName = 'video';
+                Quill.register(VideoBlot);
+
                 // 표 아이콘 SVG 강제 등록
                 const tableIcon = `<svg viewbox="0 0 18 18"><rect class="ql-stroke" height="12" width="12" x="3" y="3"></rect><line class="ql-stroke" x1="3" x2="15" y1="9" y2="9"></line><line class="ql-stroke" x1="9" x2="9" y1="3" y2="15"></line></svg>`;
                 const icons = Quill.import('ui/icons');
@@ -930,7 +991,7 @@ function initProjectQuill(isEdit = false) {
                             [{ 'header': [1, 2, 3, false] }],
                             ['bold', 'italic', 'underline'],
                             [{ 'color': [] }, { 'background': [] }],
-                            ['link', 'image'],
+                            ['link', 'image', 'video'],
                             [{ 'list': 'ordered' }, { 'list': 'bullet' }, { 'list': 'check' }],
                             ['table'],
                             ['clean']
@@ -942,6 +1003,24 @@ function initProjectQuill(isEdit = false) {
                 toolbar.addHandler('table', () => {
                     const table = projectQuill.getModule('table');
                     table.insertTable(2, 3);
+                });
+                toolbar.addHandler('video', () => {
+                    const input = document.createElement('input');
+                    input.setAttribute('type', 'file');
+                    input.setAttribute('accept', 'video/*');
+                    input.click();
+                    input.onchange = async () => {
+                        const file = input.files[0];
+                        if (file) {
+                            if (file.size > 25 * 1024 * 1024) {
+                                alert('동영상 용량이 너무 큽니다 (최대 25MB).');
+                                return;
+                            }
+                            const base64 = await DB._fileToBase64(file);
+                            const range = projectQuill.getSelection();
+                            projectQuill.insertEmbed(range ? range.index : 0, 'video', base64);
+                        }
+                    };
                 });
             } catch (err) { console.error('Quill Init Error:', err); }
         }
@@ -966,9 +1045,23 @@ async function handleSaveProject() {
             progress: parseInt(document.getElementById('project-progress').value),
             due_date: document.getElementById('project-due-date').value,
             content: projectQuill ? projectQuill.root.innerHTML : '',
-            owner: pb.authStore.model.id
+            owner: DB.getCurrentUser().id
         };
-        await pb.collection('projects').update(state.currentProject.id, data);
+
+        // Handle Video Files
+        const videoInput = document.getElementById('project-video-input');
+        if (videoInput && videoInput.files.length > 0) {
+            const formData = new FormData();
+            for (let file of videoInput.files) {
+                formData.append('file', file);
+            }
+            const parsed = await DB._parseFormData(formData);
+            data.file = parsed.file; // DB.update will stringify it
+        } else {
+            data.file = state.currentProject.file || null;
+        }
+
+        await DB.update('projects', state.currentProject.id, data);
         showModal('저장 완료', '변경사항이 저장되었습니다.', 'success');
         await fetchProjects();
         openProjectDetail(state.currentProject.id, false);
@@ -978,7 +1071,7 @@ async function handleSaveProject() {
 async function handleDeleteProject() {
     if (!state.currentProject || !confirm('정말 삭제하시겠습니까?')) return;
     try {
-        await pb.collection('projects').delete(state.currentProject.id);
+        await DB.delete('projects', state.currentProject.id);
         showModal('삭제 완료', '삭제되었습니다.', 'success');
         closeProjectModal();
         fetchProjects();
@@ -999,12 +1092,12 @@ async function handleCreateProject() {
     const title = document.getElementById('create-project-title').value.trim();
     if (!title) return;
     try {
-        await pb.collection('projects').create({
+        await DB.create('projects', {
             title,
             status: document.getElementById('create-project-status').value,
             progress: parseInt(document.getElementById('create-project-progress').value),
             due_date: document.getElementById('create-project-due').value,
-            owner: pb.authStore.model.id,
+            owner: DB.getCurrentUser().id,
             content: ''
         });
         showModal('등록 완료', '새 과제가 생성되었습니다.', 'success');
@@ -1014,8 +1107,23 @@ async function handleCreateProject() {
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
+    if (typeof DB !== 'undefined' && DB.isConnected()) {
+        startApp();
+    } else {
+        window.addEventListener('db_connected', () => startApp(), { once: true });
+    }
+});
+
+function startApp() {
+    console.log("Starting App Initialization...");
     // 탭 복구
-    const savedTab = localStorage.getItem('ax_current_tab');
+    let savedTab = localStorage.getItem('ax_current_tab');
+    
+    // 유효성 체크: 상세 페이지인데 데이터가 없으면 기본 탭으로
+    if (savedTab === 'manual-detail' && !state.currentManual) {
+        savedTab = 'manual';
+    }
+    
     if (savedTab) {
         state.currentTab = savedTab;
     }
@@ -1040,7 +1148,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             e.target.style.setProperty('caret-color', '#000000', 'important');
         }
     }, true);
-});
+}
 
 /**
  * My Page Logic
@@ -1081,7 +1189,7 @@ async function handleUpdateProfile(e) {
     }
 
     try {
-        await pb.collection('users').update(pb.authStore.model.id, data);
+        await DB.update('users', DB.getCurrentUser().id, data);
         showModal('성공', '프로필이 업데이트되었습니다.', 'success');
         updateUserInfoDisplay(); // Update top right info
         switchTab('mypage'); // Refresh view
@@ -1110,3 +1218,32 @@ function closeImageViewer() {
         document.body.style.overflow = ''; // 스크롤 복구
     }
 }
+
+/**
+ * Project Video Preview Logic
+ */
+function handleProjectVideoPreview(event) {
+    const preview = document.getElementById('project-video-preview');
+    if (!preview) return;
+    
+    const files = event.target.files;
+    if (files.length > 0) {
+        preview.innerHTML = '';
+        Array.from(files).forEach(file => {
+            const url = URL.createObjectURL(file);
+            const item = document.createElement('div');
+            item.className = 'relative w-32 h-20 bg-slate-900 rounded-xl overflow-hidden group';
+            item.innerHTML = `
+                <video class="w-full h-full object-cover opacity-60">
+                    <source src="${url}" type="${file.type}">
+                </video>
+                <div class="absolute inset-0 flex items-center justify-center bg-indigo-600/40 text-white font-black text-[10px]">
+                    READY
+                </div>
+            `;
+            preview.appendChild(item);
+        });
+    }
+}
+
+
